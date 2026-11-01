@@ -33,6 +33,19 @@ test('semantic flow executes exact fresh targets then a single final observation
  const r=await c.callTool({name:'phone_ui_flow',arguments:{packageName,sessionId,steps:[click,{...click,query:'Done'}],settleMs:0,maxDimension:1920,quality:95}}),b=result(r);assert.equal(b.completed,true);assert.equal(b.completedSteps,2);assert.equal(b.performedActions,2);assert.deepEqual(events.map(e=>e.op),['wait_and_click','wait_and_click','snapshot','screenshot']);assert.equal(events[0].args.match,'exact');assert.equal(events[1].args.query,'Done');assert.equal(events.at(-1).args.quality,95);assert.equal(b.relayTiming.deviceCommands,4);
 });
 
+test('foreground flow accepts omitted sessionId through the MCP gateway and keeps native click guards',async t=>{
+ const events=[];let clicks=0;
+ const c=await client(t,async(op,args)=>{
+  events.push({op,args});assert.equal(args.sessionId,undefined);
+  if(op==='snapshot')return {packageName,snapshotId,nodes:[{nodeId:'0',text:clicks?'Done':'Next',clickable:true,bounds:[0,0,100,100]}]};
+  assert.equal(op,'click');assert.equal(args.snapshotId,snapshotId);assert.equal(args.nodeId,'0');clicks++;return {performed:true};
+ });
+ const r=await c.callTool({name:'phone_ui_flow',arguments:{packageName,steps:[click,{...click,query:'Done'}],includeScreenshot:false}});
+ const b=result(r);assert.equal(r.isError,undefined);assert.equal(b.completedSteps,2);
+ assert.deepEqual(events.map(e=>e.op),['snapshot','click','snapshot','click','snapshot']);
+ assert.equal(b.relayTiming.deviceCommands,5);assert.ok(events.every(e=>e.args._ownerKey===events[0].args._ownerKey));
+});
+
 test('missing and ambiguous flow targets stop all subsequent writes; completed writes are never replayed',async()=>{
  for(const kind of ['timeout','ambiguous']){const events=[];const r=await uiFlow(async op=>{events.push(op);if(events.length===1)return {packageName,sessionId,found:true,performed:true};if(kind==='ambiguous')throw Error('Several targets');return {packageName,sessionId,found:false,performed:false,timedOut:true};},{...selected,steps:[click,click,click],timeoutMs:8000});assert.equal(r.completed,false);assert.equal(r.completedSteps,1);assert.equal(r.failedStep,1);assert.equal(events.length,2);assert.equal(r.replayed,false);}
 });

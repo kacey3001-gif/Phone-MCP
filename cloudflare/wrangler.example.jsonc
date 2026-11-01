@@ -27,7 +27,7 @@
     }
   ],
   "vars": {
-    "PUBLIC_URL": "https://phone-mcp.YOUR-SUBDOMAIN.workers.dev"
+    "PUBLIC_URL": "https://phone-mcp.kacey3001.workers.dev"
   },
   "assets": {
     "binding": "ASSETS",

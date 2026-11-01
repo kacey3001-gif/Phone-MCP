@@ -38,6 +38,25 @@ Use the live schema and real observed text; these placeholders are not executabl
 
 Pass this envelope to `phone_action` if the host has cached old named tools. Do not pass invented arguments to a stale named schema. Host-native file inputs still require metadata refresh.
 
+### Foreground compatibility (Android 12)
+
+Omit `sessionId` for the physical-screen control path. The relay reads a fresh,
+bounded tree for each exact target and sends one ordinary guarded `click`.
+This avoids the unsupported native `wait_and_click` command on foreground APKs.
+Separately routed sessions still use their existing native implementation.
+
+All pages of an observation are checked before a unique target is selected.
+Truncated trees, duplicate labels, changed paging snapshots, hidden/disabled or
+protected nodes, and missing clickable ancestors stop the flow before input.
+Android checks the active window, snapshot and node identity again when the
+click arrives. A click error remains uncertain and is never replayed. Foreground
+control still shares the physical screen with its user; this does not create a
+separate display or permit operation through a locked screen.
+
+This reduces host/model requests for an already understood sequence, not model
+thinking or individual network latency. The compatibility change is server-only;
+deploy the relay before using the new optional-session schema.
+
 ## Structured chess input and algebraic moves
 
 When all 64 visible squares have recognized French/English accessible descriptions and consistent grid geometry, snapshots and final observations now include `board`: `piecePlacementFen`, `boardId`, orientation and explicit nulls for unknown side-to-move/castling/en-passant. The original nodes and image remain available. Partial, duplicate, hidden or inconsistent squares produce no board summary; no pixel guessing is used.

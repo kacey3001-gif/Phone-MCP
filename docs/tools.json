@@ -1,7 +1,7 @@
 {
   "version": "0.19.0",
   "apiVersion": 1,
-  "catalogVersion": "9536208318cf0507",
+  "catalogVersion": "831fc2dc461f3c43",
   "tools": [
     {
       "name": "phone_connection",
@@ -460,7 +460,7 @@
     },
     {
       "name": "phone_ui_flow",
-      "description": "Execute 1-8 planned exact semantic clicks/waits with fresh native target guards and ONE final observation/screenshot. Use for already understood navigation; no model round trip between steps. Stops at the first missing/ambiguous/protected target, error or deadline. Inspect completedSteps/failedStep/uncertain; never replay a partial flow. App/session and local stop guards remain enforced. Use action_sequence for already observed Canvas/game gestures. Returns observation with a fresh snapshot after the action.",
+      "description": "Execute 1-8 planned exact semantic clicks/waits (omit sessionId for foreground Android control) with fresh device target guards and ONE final observation/screenshot. Use for already understood navigation; no model round trip between steps. Stops at the first missing/ambiguous/protected target, error or deadline. Inspect completedSteps/failedStep/uncertain; never replay a partial flow. App/session and local stop guards remain enforced. Use action_sequence for already observed Canvas/game gestures. Returns observation with a fresh snapshot after the action.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -563,7 +563,6 @@
         },
         "required": [
           "packageName",
-          "sessionId",
           "steps"
         ],
         "additionalProperties": false,
