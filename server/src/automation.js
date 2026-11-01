@@ -4,6 +4,7 @@ import {startApp,uiFlow,adResult} from './fast-workflows.js';
 import {recoverRead} from './read-recovery.js';
 import {commandWithObservation,compactSnapshot} from './screen-output.js';
 import {withLegacyLongPress} from './legacy-interactions.js';
+import {needsForegroundTextEvidence,verifyForegroundText,foregroundImageEvidence,foregroundTextEvidence} from './foreground-text.js';
 
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function runOperation(command,op,args){
@@ -23,7 +24,11 @@ export async function runOperation(command,op,args){
       const {timeoutMs,...selection}=args;
       const screen=await command('snapshot',{...selection,limit:200,find:true});
       const result=withLegacyLongPress(compactSnapshot(screen));
-      if(result.nodes?.length||op==='find_nodes')return {...result,found:!!result.nodes?.length,elapsedMs:Date.now()-start};
+      if(result.nodes?.length||op==='find_nodes'){
+        const evidence=await foregroundTextEvidence(command,result,args);
+        const unverifiedMatch=evidence!==result&&['text','description','any',undefined].includes(args.by)&&result.nodes.some(n=>n.editable&&n.visible!==false&&n.text!=='[champ protégé]');
+        return {...evidence,found:!!result.nodes?.length&&!unverifiedMatch,...(unverifiedMatch?{unverifiedMatch:true}:{}),elapsedMs:Date.now()-start};
+      }
       if(Date.now()>=deadline)return {...result,found:false,timedOut:true,elapsedMs:Date.now()-start};
       await pause(Math.min(250,Math.max(0,deadline-Date.now())));
     }while(true);
@@ -35,8 +40,11 @@ export async function runOperation(command,op,args){
       screen=await command('snapshot',{packageName:args.packageName,sessionId:args.sessionId,_ownerKey:args._ownerKey,limit:200});
       const fingerprint=screen.contentFingerprint??JSON.stringify(screen.nodes);
       if(fingerprint!==last){last=fingerprint;stableSince=Date.now();}
-      if(Date.now()-stableSince>=args.stableMs)return {idle:true,elapsedMs:Date.now()-start,observation:withLegacyLongPress(compactSnapshot(screen))};
-      if(Date.now()>=deadline)return {idle:false,timedOut:true,elapsedMs:Date.now()-start,observation:withLegacyLongPress(compactSnapshot(screen))};
+      const idle=Date.now()-stableSince>=args.stableMs,timedOut=Date.now()>=deadline;
+      if(idle||timedOut){
+        const {screenshot,screenshotError,...observation}=await foregroundTextEvidence(command,withLegacyLongPress(compactSnapshot(screen)),args);
+        return {idle,...(!idle?{timedOut:true}:{}),elapsedMs:Date.now()-start,observation,...(screenshot?{screenshot}:{}),...(screenshotError?{screenshotError}:{})};
+      }
       await pause(Math.min(250,Math.max(0,deadline-Date.now())));
     }while(true);
   }
@@ -44,9 +52,14 @@ export async function runOperation(command,op,args){
   if(op==='start_app'||op==='ui_flow'||op==='board_move')command=(operation,selection)=>operation==='start_app'?startApp(deviceCommand,selection):operation==='ui_flow'?uiFlow(deviceCommand,selection):operation==='board_move'?boardMove(deviceCommand,selection):deviceCommand(operation,selection);
   const result=await commandWithObservation(command,op,args);
   if(op==='board_move'){const final=chessBoard(result.observation)??(result.observation?.format==='decision'?result.observation.board:null);const pieces=final?decodePlacement(final.piecePlacementFen):null;result.moveVerified=!!pieces&&pieces.get(args.uci.slice(0,2))==='.'&&pieces.get(args.uci.slice(2,4))===result.sourcePiece;if(final){result.boardChanged=final.boardId!==result.priorBoardId;result.finalPiecePlacementFen=final.piecePlacementFen;}}
-  if(op==='snapshot'&&args.includeScreenshot){
+  if(op==='snapshot'&&(args.includeScreenshot||needsForegroundTextEvidence(result))){
     try{result.screenshot=await command('screenshot',{packageName:args.packageName,sessionId:args.sessionId??result.sessionId,_ownerKey:args._ownerKey,snapshotId:result.snapshotId,maxDimension:args.maxDimension,quality:args.quality,annotate:args.annotate});}
     catch(error){result.screenshotError=error.message;}
+  }
+  if(op==='snapshot'){
+    const freshImage=foregroundImageEvidence(result.screenshot,result);
+    if(needsForegroundTextEvidence(result)&&result.screenshot&&!freshImage){result.screenshotError='No usable screenshot bound to the editable-text observation.';delete result.screenshot;}
+    return verifyForegroundText(result,{hasImage:freshImage});
   }
   return result;
 }

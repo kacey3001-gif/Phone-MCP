@@ -1,5 +1,6 @@
 import {boardSummary} from './chess-board.js';
 import {resolveLegacyInteraction,withLegacyLongPress} from './legacy-interactions.js';
+import {needsForegroundTextEvidence,verifyForegroundText,foregroundImageEvidence} from './foreground-text.js';
 /** Preserve every observed node/parent/bounds; omit empty/default fields from model context. */
 export function compactSnapshot(value,detail='compact') {
   if(!value||!Array.isArray(value.nodes))return value;
@@ -74,7 +75,7 @@ export async function commandWithObservation(command,op,args) {
       :op==='wait_and_click'
         ?'Attente et clic unique sur une correspondance exacte. found=false et performed=false indiquent qu’aucun clic n’a été exécuté. Vérifiez observation ; ne répétez pas une écriture incertaine.'
         :'Action exécutée une seule fois. Vérifiez observation ; utilisez son snapshotId pour la suite sans rappeler phone_snapshot.';
-    if(includeScreenshot){
+    if(includeScreenshot||needsForegroundTextEvidence(observation)){
       const captureStart=performance.now();
       try{
         const capture=await command('screenshot',{...selection,snapshotId:observation.snapshotId,maxDimension,quality,annotate});
@@ -84,6 +85,10 @@ export async function commandWithObservation(command,op,args) {
       }catch(error){next.screenshotError=error.message;}
       next.captureMs=Math.round(performance.now()-captureStart);
     }
+    const freshImage=foregroundImageEvidence(next.screenshot,next.observation);
+    if(needsForegroundTextEvidence(next.observation)&&next.screenshot&&!freshImage){next.screenshotError='No usable screenshot bound to the editable-text observation.';delete next.screenshot;}
+    next.observation=verifyForegroundText(next.observation,{hasImage:freshImage});
+    if(next.observation!==observation)next.instruction+=' Editable values require the fresh screenshot; cached text is omitted from observation.';
   }else{
     next.observationError=observationError;
     next.instruction='L’action a été remise à Android. Sa lecture de contrôle a échoué : relisez avant toute nouvelle action, ne répétez pas automatiquement cette action.';

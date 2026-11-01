@@ -67,6 +67,24 @@ The final observation/image is unchanged in quality; `moveVerified` means the so
 
 ## Measure the complete path
 
+### Legacy foreground editable text
+
+Some Android 12 foreground companions retain old editable text even while the
+screen visibly changes. For these observations the relay omits editable text and
+descriptions, retaining node IDs, bounds and action guards. It automatically
+requests an authorized screenshot bound to that snapshot, including when optional
+`includeScreenshot` is false. The image is verification evidence, not an OCR
+replacement for node labels. This adds one capture to affected reads/actions;
+there is no extra model/tool round trip when the image succeeds.
+
+`textFreshness.state=verify_in_image` requires reading current editable values
+from that image. `unverified` means capture failed or returned unusable evidence:
+do not infer the value from earlier text. Protected fields stay protected, and
+capture refusal never causes input, a permission change or an input retry.
+Searches cannot claim a cached editable text match as verified. Native companions
+that report a cleared framework cache skip this fallback. Static labels and
+noneditable text are not covered by this targeted safeguard.
+
 Every executed operation returns `relayTiming`:
 
 - `totalMs`: elapsed inside this MCP execution, including its session queue and final evidence.
