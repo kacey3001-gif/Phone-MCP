@@ -7,6 +7,47 @@ const binding=(value,args,label)=>{
 };
 const summary=error=>String(error?.message??error).slice(0,500);
 
+/** Foreground APKs have snapshot/click but no native wait_and_click operation.
+ * Read the whole bounded tree before resolving a unique, visible clickable target.
+ * Android still revalidates the snapshot, node identity, active window and grant.
+ */
+async function foregroundClick(command,selected,step,until,now){
+ let inputAttempted=false;
+ try{
+  do{
+   const pages=[];let cursor,snapshotId;
+   do{
+    if(now()>=until)return {found:false,performed:false,timedOut:true};
+    const frame=await command('snapshot',{...selected,limit:350,...(cursor?{cursor}:{})});
+    binding(frame,selected,'Flow read');
+    if(!frame?.snapshotId||!Array.isArray(frame.nodes)||frame.truncated===true)throw Error('Incomplete foreground observation; no click sent.');
+    if(snapshotId&&frame.snapshotId!==snapshotId)throw Error('Foreground observation changed while paging; no click sent.');
+    snapshotId=frame.snapshotId;pages.push(...frame.nodes);
+    if(pages.length>2000)throw Error('Foreground observation exceeds node budget; no click sent.');
+    if(frame.nextCursor===cursor&&cursor)throw Error('Repeated foreground cursor; no click sent.');
+    cursor=frame.nextCursor;
+   }while(cursor);
+   const screen=compactSnapshot({nodes:pages});
+   const matches=screen.nodes.filter(n=>n[step.by??'text']===step.query&&n.visible!==false&&n.enabled!==false&&n.text!=='[champ protégé]');
+   if(matches.length>1)throw Error('Several foreground targets; no click sent.');
+   if(matches.length===1){
+    const node=matches[0],nodeId=node.clickable?node.nodeId:node.clickNodeId;
+    if(!nodeId)throw Error('Foreground target is not clickable; no click sent.');
+    if(now()>=until)return {found:true,performed:false,timedOut:true};
+    inputAttempted=true;
+    const result=await command('click',{...selected,snapshotId,nodeId});
+    binding(result,selected,'Flow action');
+    return {...result,found:true,performed:result.performed===true};
+   }
+   if(now()>=until)return {found:false,performed:false,timedOut:true};
+   await new Promise(r=>setTimeout(r,Math.min(120,Math.max(0,until-now()))));
+  }while(true);
+ }catch(error){
+  // Carry uncertainty without ever retrying a delivered click or switching input paths.
+  const failure=new Error(summary(error));failure.inputAttempted=inputAttempted;throw failure;
+ }
+}
+
 /** Inspect an idempotent session before opening: repeating the macro never reopens its app. */
 export async function startApp(command,args){
  const sessionId=args.requestId,selected={packageName:args.packageName,sessionId,_ownerKey:args._ownerKey};
@@ -33,7 +74,10 @@ export async function uiFlow(command,args,{now=()=>performance.now()}={}){
    let result;
    const query={...selected,query:step.query,by:step.by??'text',match:'exact'};
    if(step.op==='wait_and_click'){
-    result=await command('wait_and_click',{...query,timeoutMs});binding(result,selected,'Flow action');
+    result=args.sessionId
+     ?await command('wait_and_click',{...query,timeoutMs})
+     :await foregroundClick(command,selected,step,Math.min(deadline,now()+timeoutMs),now);
+    binding(result,selected,'Flow action');
     if(result.performed===true)performedActions++;
     steps.push({index,op:step.op,found:result.found===true,performed:result.performed===true});
     if(result.performed!==true){failedStep=index;reason=result.timedOut?'target_timeout':'action_not_confirmed';break;}
@@ -49,7 +93,7 @@ export async function uiFlow(command,args,{now=()=>performance.now()}={}){
     if(!found){failedStep=index;reason='target_timeout';break;}
    }
    completedSteps++;
-  }catch(error){failedStep=index;uncertain=step.op==='wait_and_click';reason=summary(error);steps.push({index,op:step.op,uncertain,error:reason});break;}
+  }catch(error){failedStep=index;uncertain=step.op==='wait_and_click'&&(args.sessionId!=null||error.inputAttempted===true);reason=summary(error);steps.push({index,op:step.op,uncertain,error:reason});break;}
  }
  return {...selected,_ownerKey:undefined,completed:completedSteps===args.steps.length,completedSteps,performedActions,failedStep,uncertain,reason,steps,elapsedMs:Math.round(now()-began),replayed:false};
 }
