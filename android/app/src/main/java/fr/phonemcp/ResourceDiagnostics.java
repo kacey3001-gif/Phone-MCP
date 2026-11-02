@@ -14,7 +14,9 @@ final class ResourceDiagnostics {
     static JSONObject sample(Context context)throws Exception{
         long started=SystemClock.elapsedRealtime();
         BatteryManager battery=context.getSystemService(BatteryManager.class);PowerManager power=context.getSystemService(PowerManager.class);
-        Intent state=context.registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        // Shizuku's shell process is not an ActivityManager-registered app. Even a
+        // null receiver can throw there; use the dumpsys fallback below instead.
+        Intent state=android.os.Process.myUid()==2000?null:context.registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
         JSONObject b=new JSONObject();
         if(battery!=null){property(b,"chargeCounterUah",battery.getLongProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER));property(b,"currentNowUa",battery.getLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW));property(b,"currentAverageUa",battery.getLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_AVERAGE));property(b,"energyCounterNwh",battery.getLongProperty(BatteryManager.BATTERY_PROPERTY_ENERGY_COUNTER));}
         if(state!=null)b.put("level",state.getIntExtra(BatteryManager.EXTRA_LEVEL,-1)).put("scale",state.getIntExtra(BatteryManager.EXTRA_SCALE,-1)).put("plugged",state.getIntExtra(BatteryManager.EXTRA_PLUGGED,-1)).put("temperatureTenthsC",state.getIntExtra(BatteryManager.EXTRA_TEMPERATURE,-1)).put("voltageMv",state.getIntExtra(BatteryManager.EXTRA_VOLTAGE,-1));
